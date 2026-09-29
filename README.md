@@ -7,6 +7,8 @@ A soundboard in the spirit of [Soundux](https://github.com/Soundux/Soundux),
 written in [Jolt](https://jolt-lang.net/) (Clojure on Chez Scheme, no JVM).
 Audio goes through a small C shim over [miniaudio](https://miniaud.io/).
 
+![sound-jutsu window, two sounds playing](docs/screenshot.png)
+
 ## Usage
 
 ```
