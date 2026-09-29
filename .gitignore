@@ -1,0 +1,10 @@
+native/miniaudio.h
+native/libsj_audio.*
+/sound-jutsu-app/
+/target/
+/.cpcache/
+/.jolt/
+*.o
+.clj-kondo/.cache/
+.lsp/.cache/
+.DS_Store

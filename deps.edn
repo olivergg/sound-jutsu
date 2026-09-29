@@ -1,0 +1,98 @@
+;; sound-jutsu — a soundboard with global hotkeys.
+;; Copyright (C) 2026  Olivier G
+;;
+;; This program is free software: you can redistribute it and/or modify
+;; it under the terms of the GNU Affero General Public License, version 3,
+;; as published by the Free Software Foundation.
+;;
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU Affero General Public License for more details.
+;;
+;; You should have received a copy of the GNU Affero General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+;;
+;; Additional permission under GNU AGPL version 3 section 7
+;;
+;; If you modify this Program, or any covered work, by linking or combining
+;; it with Jolt (https://github.com/jolt-lang/jolt), including its runtime,
+;; standard library and bundled libraries, and with Chez Scheme (or modified
+;; versions of them), containing parts covered by the terms of the Eclipse
+;; Public License version 1.0 or 2.0 or of the Apache License version 2.0,
+;; the licensors of this Program grant you additional permission to convey
+;; the resulting work.  Corresponding Source for a non-source form of such a
+;; combination shall include the source code for the parts of Jolt and Chez
+;; Scheme used as well as that of the covered work.
+
+{:paths ["src" "resources"]
+ :deps {}
+
+ ;; Bake resources/ into `jolt build` binaries, served via io/resource.
+ :jolt/build {:embed ["resources"]}
+
+ ;; Native libs load at startup, before namespaces are required.
+ ;; Build the shim first: `jolt native`.
+ ;; "native/…" resolves against the project under `jolt run`, but against the
+ ;; cwd in a built binary — `package` swaps in a bare name for that reason.
+ :jolt/native [{:name  "sj_audio"
+                :darwin ["native/libsj_audio.dylib"]
+                :linux  ["native/libsj_audio.so"]}]
+
+ :aliases {:test {:extra-paths ["test"]}}
+
+ :tasks
+ {:requires ([babashka.fs :as fs] [clojure.string :as str])
+  :init (do (def darwin? (str/includes? (str/lower-case (System/getProperty "os.name")) "mac"))
+            (def lib (if darwin? "libsj_audio.dylib" "libsj_audio.so")))
+
+  vendor {:doc "download pinned miniaudio.h and webview.h into native/, verify sha256"
+          :task (doseq [[f url sha]
+                        [["native/miniaudio.h"
+                          "https://raw.githubusercontent.com/mackron/miniaudio/0.11.25/miniaudio.h"
+                          "ac7af4de748b7e26b777f37e01cee313a308a7296a3eb080e2906b320cc55c89"]
+                         ["native/webview.h"
+                          "https://raw.githubusercontent.com/webview/webview/0.10.0/webview.h"
+                          "2dff29233cd0b7bd77e6530cf8c778da6167e0d397c2ac8c524f0108716c4fd1"]]]
+                  (when-not (fs/exists? f)
+                    (shell "curl" "-fsSL" url "-o" f))
+                  (shell {:in (str sha "  " f "\n")} "shasum" "-a" "256" "-c" "--quiet"))}
+
+  native {:doc "build native/libsj_audio.{dylib,so} from the C/ObjC++ shims"
+          :depends [vendor]
+          :task (let [src     ["native/sj_audio.c" "native/sj_hotkeys.c" "native/sj_webview.mm"]
+                      flags   (if darwin?
+                                ["-dynamiclib" "-lc++"
+                                 "-framework" "CoreAudio" "-framework" "CoreFoundation"
+                                 "-framework" "AudioToolbox" "-framework" "Carbon"
+                                 "-framework" "WebKit" "-framework" "Cocoa"]
+                                ["-shared" "-fPIC" "-lpthread" "-lm" "-ldl"])]
+                  (apply shell "clang" "-O2" "-Inative" (concat flags ["-o" (str "native/" lib)] src)))}
+
+  package {:doc "standalone sound-jutsu-app/: launcher + libexec/{binary, shim}"
+           :depends [native]
+           :task (let [out "sound-jutsu-app/libexec"]
+                   (fs/delete-tree "sound-jutsu-app")
+                   (fs/create-dirs out)
+                   ;; bare name (see :jolt/native); the build loads the shim too, hence the env
+                   (shell {:extra-env {"DYLD_LIBRARY_PATH" "native" "LD_LIBRARY_PATH" "native"}}
+                          "jolt" "-Sdeps" (pr-str {:jolt/native [{:name "sj_audio" :darwin [lib] :linux [lib]}]})
+                          "build" "-m" "soundjutsu.core" "--dynamic"
+                          "-o" (str out "/sound-jutsu"))
+                   (fs/delete-tree (str out "/sound-jutsu.build"))
+                   (fs/copy (str "native/" lib) out)
+                   (doseq [f ["LICENSE" "THIRD_PARTY_NOTICES"]] (fs/copy f "sound-jutsu-app"))
+                   (fs/copy-tree "licenses" "sound-jutsu-app/licenses")
+                   ;; its lib path wins over macOS's cwd search for bare names: run via the launcher
+                   (spit "sound-jutsu-app/sound-jutsu"
+                         (str "#!/bin/sh\n"
+                              "d=$(dirname \"$(readlink -f \"$0\")\")/libexec\n"
+                              "DYLD_LIBRARY_PATH=\"$d\" LD_LIBRARY_PATH=\"$d\" exec \"$d/sound-jutsu\" \"$@\"\n"))
+                   (shell "chmod" "+x" "sound-jutsu-app/sound-jutsu"))}
+
+  test {:doc "run unit tests (ui-test needs the shim: `jolt native`)"
+        :task (shell "jolt" "-A:test" "-e"
+                     ;; separate forms: the whole -e is analyzed before require runs
+                     (pr-str '(require 'clojure.test 'soundjutsu.config-test 'soundjutsu.ui-test)
+                             '(let [{:keys [fail error]} (clojure.test/run-all-tests #"soundjutsu\..*-test")]
+                                (System/exit (if (zero? (+ fail error)) 0 1)))))}}}

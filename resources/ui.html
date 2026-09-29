@@ -1,0 +1,314 @@
+<!doctype html>
+<!--
+  sound-jutsu — a soundboard with global hotkeys.
+  Copyright (C) 2026  Olivier G
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU Affero General Public License, version 3,
+  as published by the Free Software Foundation.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU Affero General Public License for more details.
+
+  You should have received a copy of the GNU Affero General Public License
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+  Additional permission under GNU AGPL version 3 section 7
+
+  If you modify this Program, or any covered work, by linking or combining
+  it with Jolt (https://github.com/jolt-lang/jolt), including its runtime,
+  standard library and bundled libraries, and with Chez Scheme (or modified
+  versions of them), containing parts covered by the terms of the Eclipse
+  Public License version 1.0 or 2.0 or of the Apache License version 2.0,
+  the licensors of this Program grant you additional permission to convey
+  the resulting work.  Corresponding Source for a non-source form of such a
+  combination shall include the source code for the parts of Jolt and Chez
+  Scheme used as well as that of the covered work.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+:root{
+ --grad:linear-gradient(120deg,#646cff,#a855f7 55%,#bd34fe);
+ --glass:rgba(255,255,255,.045);
+ --brd:rgba(255,255,255,.09);
+ --txt:#e9e8f2;--muted:#9c9ab5;
+ color-scheme:dark}
+*{box-sizing:border-box;font-family:-apple-system,system-ui,sans-serif;
+ -webkit-user-select:none;user-select:none}
+#filter{-webkit-user-select:text;user-select:text}
+body{margin:0;color:var(--txt);background:#08080e;
+ background-image:
+  radial-gradient(620px circle at 12% -5%,rgba(100,108,255,.22),transparent 60%),
+  radial-gradient(680px circle at 92% 12%,rgba(189,52,254,.18),transparent 55%),
+  radial-gradient(900px circle at 50% 120%,rgba(120,60,220,.15),transparent 60%);
+ background-attachment:fixed}
+::-webkit-scrollbar{width:10px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:8px}
+header{position:sticky;top:0;z-index:5;display:flex;gap:14px;align-items:center;flex-wrap:wrap;
+ padding:12px 18px;background:rgba(10,10,18,.55);border-bottom:1px solid var(--brd);
+ backdrop-filter:blur(18px) saturate(160%);-webkit-backdrop-filter:blur(18px) saturate(160%)}
+.logo{font-weight:700;letter-spacing:.4px;font-size:15px;
+ background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+#filter{flex:1;min-width:150px;color:var(--txt);font-size:14px;border-radius:11px;padding:9px 13px;
+ background:var(--glass);border:1px solid var(--brd);
+ backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+#filter::placeholder{color:var(--muted)}
+#filter:focus{outline:none;border-color:rgba(150,120,255,.55);
+ box-shadow:0 0 0 3px rgba(120,100,255,.16)}
+/* scene switcher: exactly one active, like OBS scenes */
+.scenes{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.scene{cursor:pointer;font-size:13px;color:var(--muted);padding:6px 13px;border-radius:999px;
+ background:var(--glass);border:1px solid var(--brd);display:flex;align-items:center;gap:6px}
+.scene:hover{color:var(--txt)}
+.scene.active{color:#fff;border-color:transparent;background:var(--grad);cursor:default;
+ box-shadow:0 4px 18px rgba(130,80,255,.4)}
+.scene .act{display:none;opacity:.75;font-size:12px}
+.scene.active .act{display:inline}
+.scene .act:hover{opacity:1}
+.scene.add{border-style:dashed;padding:6px 11px}
+#act{font-size:12px;color:#d3c4ff;opacity:0;transition:.25s;max-width:220px;
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#act.on{opacity:1}
+.vol{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);
+ text-transform:uppercase;letter-spacing:.5px}
+input[type=range]{-webkit-appearance:none;height:4px;border-radius:3px;width:88px;
+ background:rgba(255,255,255,.14)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;
+ border-radius:50%;background:var(--grad);box-shadow:0 0 10px rgba(160,110,255,.7);cursor:pointer}
+button.stop{cursor:pointer;font-weight:600;color:#fff;padding:9px 17px;border:0;border-radius:11px;
+ background:linear-gradient(120deg,#ff5a72,#ff3d5f);box-shadow:0 4px 18px rgba(255,60,95,.38)}
+button.stop:active{transform:translateY(1px)}
+main{padding:18px;display:grid;gap:14px;
+ grid-template-columns:repeat(auto-fill,minmax(162px,1fr))}
+.empty{grid-column:1/-1;margin-top:14vh;text-align:center;color:var(--muted);font-size:14px}
+.empty button{margin-top:16px;cursor:pointer;font-size:14px;color:#fff;padding:12px 22px;
+ border:0;border-radius:14px;background:var(--grad);box-shadow:0 6px 24px rgba(130,80,255,.4)}
+.snd{position:relative;cursor:pointer;text-align:center;font-size:13px;line-height:1.35;
+ min-height:86px;padding:16px 14px 22px;border-radius:24px;color:var(--txt);
+ background:var(--glass);border:1px solid var(--brd);
+ backdrop-filter:blur(14px) saturate(150%);-webkit-backdrop-filter:blur(14px) saturate(150%);
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 8px 24px rgba(0,0,0,.38);
+ transition:transform .13s,box-shadow .22s;overflow:hidden}
+.snd::before{content:'';position:absolute;inset:0;border-radius:inherit;padding:1px;
+ background:var(--grad);opacity:0;transition:opacity .22s;
+ -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+ -webkit-mask-composite:xor;mask-composite:exclude}
+.snd:hover{transform:translateY(-2px);
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 14px 34px rgba(95,60,210,.4)}
+.snd:hover::before{opacity:.7}
+.snd:active{transform:translateY(0) scale(.98)}
+/* cursor-following spotlight, position set via --mx/--my on pointermove */
+.snd::after{content:'';position:absolute;inset:0;border-radius:inherit;
+ background:radial-gradient(140px circle at var(--mx,50%) var(--my,50%),
+  rgba(255,255,255,.14),transparent 65%);
+ opacity:0;transition:opacity .3s;pointer-events:none}
+.snd:hover::after{opacity:1}
+.snd.playing::before{opacity:1;animation:pulse 1.7s ease-in-out infinite}
+.snd.playing{background:rgba(120,90,220,.14);
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 0 30px rgba(160,100,255,.55)}
+@keyframes pulse{50%{opacity:.3}}
+.snd .nm{position:relative;z-index:1;display:-webkit-box;-webkit-line-clamp:2;
+ -webkit-box-orient:vertical;overflow:hidden}
+.snd .hk{position:relative;z-index:1;display:inline-block;margin-top:8px;font-size:11px;
+ color:var(--muted);padding:1px 8px;border-radius:6px;background:rgba(255,255,255,.06);
+ border:1px solid var(--brd);cursor:pointer}
+.snd .hk:hover{color:#fff;border-color:rgba(150,120,255,.55)}
+.snd .hk.cap{color:#e4d7ff;border-color:#a78bfa;background:rgba(167,139,250,.16)}
+.snd .sv{position:absolute;left:14px;right:14px;bottom:7px;width:auto;opacity:0;
+ transition:.15s;z-index:2}
+.snd:hover .sv{opacity:.85}
+.snd.playing .sv{display:none}
+.snd .wave{position:absolute;left:0;right:0;bottom:0;height:30px;display:flex;
+ align-items:flex-end;justify-content:center;gap:3px;opacity:0;pointer-events:none;
+ transition:opacity .25s}
+.snd.playing .wave{opacity:.5}
+.snd .wave i{width:3px;height:5px;border-radius:2px;background:var(--grad);
+ animation:eq 900ms ease-in-out infinite;animation-play-state:paused}
+.snd.playing .wave i{animation-play-state:running}
+.snd .wave i:nth-child(2){animation-delay:-.72s}
+.snd .wave i:nth-child(3){animation-delay:-.48s}
+.snd .wave i:nth-child(4){animation-delay:-.26s}
+.snd .wave i:nth-child(5){animation-delay:-.6s}
+@keyframes eq{0%,100%{height:5px}50%{height:24px}}
+.snd .stopone{position:absolute;top:8px;right:8px;width:22px;height:22px;border-radius:50%;
+ border:1px solid var(--brd);background:rgba(0,0,0,.4);display:none;z-index:3;
+ align-items:center;justify-content:center;cursor:pointer;padding:0}
+.snd.playing .stopone{display:flex}
+.snd .stopone::before{content:'';width:8px;height:8px;border-radius:2px;background:#ff5a72}
+</style>
+</head>
+<body>
+<header>
+ <span class="logo">sound-jutsu</span>
+ <div class="scenes" id="scenes"></div>
+ <input id="filter" placeholder="Filter…" autocomplete="off">
+ <div id="act"></div>
+ <div class="vol">vol<input type="range" min="0" max="1" step=".05" value="%%MONITOR_VOL%%"
+      oninput="sj('vol','monitor',this.value)"></div>
+ <button class="stop" onclick="stopAll()">Stop all</button>
+</header>
+<main id="grid"></main>
+<script>
+let SOUNDS = %%SOUNDS%%;
+let SCENES = %%SCENES%%;
+
+let capturing = null;
+const playingKeys = new Set();
+const grid = document.getElementById('grid');
+const scenesEl = document.getElementById('scenes');
+const filter = document.getElementById('filter');
+const actEl = document.getElementById('act');
+const MODCODES = ['ControlLeft','ControlRight','AltLeft','AltRight','MetaLeft','MetaRight','ShiftLeft','ShiftRight'];
+
+function esc(s) { return s.replace(/[&<]/g, c => c === '&' ? '&amp;' : '&lt;'); }
+function activeScene() { return SCENES.find(s => s.active); }
+
+// ---- scenes ----------------------------------------------------------
+
+async function addScene() {
+  const path = await window.sjPickFolder();
+  if (path) sj('add-scene', path);
+}
+async function repointScene(sc) {
+  const path = await window.sjPickFolder();
+  if (path) sj('set-folder', sc.id, path);
+}
+
+function renderScenes() {
+  scenesEl.innerHTML = '';
+  for (const sc of SCENES) {
+    const b = document.createElement('div');
+    b.className = 'scene' + (sc.active ? ' active' : '');
+    b.title = sc.folder;
+    b.innerHTML = esc(sc.name)
+      + '<span class="act edit" title="Change folder">✎</span>'
+      + '<span class="act del" title="Remove scene">×</span>';
+    b.onclick = e => {
+      if (e.target.classList.contains('edit')) { repointScene(sc); return; }
+      if (e.target.classList.contains('del')) { sj('del-scene', sc.id); return; }
+      if (!sc.active) sj('scene', sc.id);
+    };
+    scenesEl.appendChild(b);
+  }
+  const add = document.createElement('div');
+  add.className = 'scene add'; add.textContent = '＋';
+  add.title = 'Add a scene from a folder';
+  add.onclick = addScene;
+  scenesEl.appendChild(add);
+}
+
+// pushed from the app after any scene/config change
+function sjSetData(sounds, scenes) {
+  SOUNDS = sounds; SCENES = scenes;
+  capturing = null; playingKeys.clear();
+  renderScenes(); render();
+}
+
+// ---- sounds ----------------------------------------------------------
+
+function render() {
+  const q = filter.value.toLowerCase();
+  grid.innerHTML = '';
+  if (SCENES.length === 0) {
+    grid.innerHTML = '<div class="empty">No scene yet — a scene is just a folder of sounds.'
+      + '<br><button onclick="addScene()">＋ Choose a sound folder</button></div>';
+    return;
+  }
+  if (SOUNDS.length === 0) {
+    const sc = activeScene();
+    grid.innerHTML = '<div class="empty">No audio files in<br>' + esc(sc ? sc.folder : '') + '</div>';
+    return;
+  }
+  for (const s of SOUNDS) {
+    if (q && !s.name.toLowerCase().includes(q)) continue;
+    const d = document.createElement('div');
+    d.className = 'snd' + (s.fav ? ' fav' : '');
+    d.dataset.key = s.scene + '/' + s.id;
+    const hk = capturing && capturing.id === s.id
+      ? '<span class="hk cap">press…</span>'
+      : '<span class="hk">' + esc(s.hotkey || '+ key') + '</span>';
+    d.innerHTML = '<span class="nm">' + esc(s.name) + '</span>' + hk
+      + '<input class="sv" type="range" min="0" max="1" step=".05" value="' + s.vol + '">'
+      + '<span class="wave"><i></i><i></i><i></i><i></i><i></i></span>'
+      + '<button class="stopone" title="Stop"></button>';
+    d.onclick = e => {
+      if (e.target.classList.contains('hk')) { startCapture(s); return; }
+      if (e.target.classList.contains('sv')) return;
+      if (e.target.classList.contains('stopone')) return;
+      play(s);
+    };
+    const sv = d.querySelector('.sv');
+    sv.oninput = e => { e.stopPropagation(); s.vol = parseFloat(sv.value); sj('sndvol', s.scene, s.id, sv.value); };
+    sv.onclick = e => e.stopPropagation();
+    d.querySelector('.stopone').onclick = e => { e.stopPropagation(); stopOne(s); };
+    grid.appendChild(d);
+  }
+  applyPlaying();
+}
+
+function play(s) {
+  sj('play', s.scene, s.id);
+  playingKeys.add(s.scene + '/' + s.id); applyPlaying(); showAct('▶ ' + s.name);
+}
+function stopOne(s) {
+  sj('stop', s.scene, s.id);
+  playingKeys.delete(s.scene + '/' + s.id); applyPlaying();
+}
+function stopAll() { sj('stop'); playingKeys.clear(); applyPlaying(); }
+function applyPlaying() {
+  [...grid.children].forEach(c => c.classList.toggle('playing', playingKeys.has(c.dataset.key)));
+}
+// pushed from the app whenever the set of playing sounds changes
+function sjPlaying(keys) { playingKeys.clear(); keys.forEach(k => playingKeys.add(k)); applyPlaying(); }
+function showAct(t) {
+  actEl.textContent = t; actEl.classList.add('on');
+  clearTimeout(actEl._t); actEl._t = setTimeout(() => actEl.classList.remove('on'), 2500);
+}
+
+// ---- hotkey capture --------------------------------------------------
+
+function startCapture(s) { capturing = { id: s.id }; render(); }
+function specFromEvent(e) {
+  if (MODCODES.includes(e.code)) return undefined;
+  const m = [];
+  if (e.ctrlKey) m.push('ctrl'); if (e.altKey) m.push('alt');
+  if (e.metaKey) m.push('cmd'); if (e.shiftKey) m.push('shift');
+  let k = e.code;
+  if (k.startsWith('Key')) k = k.slice(3).toLowerCase();
+  else if (k.startsWith('Digit')) k = k.slice(5);
+  else if (k.startsWith('Numpad')) k = 'num' + k.slice(6).toLowerCase();
+  else if (/^F\d+$/.test(k)) k = k.toLowerCase();
+  else if (k === 'Space') k = 'space';
+  else k = k.toLowerCase();
+  m.push(k); return m.join('+');
+}
+window.addEventListener('keydown', e => {
+  if (!capturing) return;
+  e.preventDefault();
+  if (e.code === 'Escape') { capturing = null; render(); return; }
+  const spec = specFromEvent(e); if (!spec) return;
+  const s = SOUNDS.find(x => x.id === capturing.id);
+  if (s) { s.hotkey = spec; sj('bind', s.scene, s.id, spec); }
+  capturing = null; render();
+});
+
+filter.addEventListener('input', render);
+
+// cursor-following spotlight on whichever .snd is under the pointer
+grid.addEventListener('pointermove', e => {
+  const card = e.target.closest('.snd');
+  if (!card) return;
+  const r = card.getBoundingClientRect();
+  card.style.setProperty('--mx', ((e.clientX - r.left) / r.width * 100) + '%');
+  card.style.setProperty('--my', ((e.clientY - r.top) / r.height * 100) + '%');
+});
+
+renderScenes();
+render();
+</script>
+</body>
+</html>
