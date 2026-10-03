@@ -1,5 +1,7 @@
 # sound-jutsu 音
 
+[![AI-assisted](https://img.shields.io/badge/AI--assisted-LLM-blueviolet)](#ai-disclosure)
+
 > **Experimental.** macOS only for now. The CLI and config format may still
 > change, and there are no releases yet.
 
@@ -90,6 +92,10 @@ which are also valid EDN, so Jolt reads them without a JSON parser.
   frameworks the shim needs.
 - Dock icon in packaged builds (`assets/icon.png` is still read from the
   current directory).
+
+## AI disclosure
+
+Large parts of this code were written with an LLM agent, then reviewed and tested by me.
 
 ## License
 
